@@ -1,3 +1,7 @@
+#######################################
+## JobScrape.py - LinkedIn Job Scraper
+#######################################
+
 import re
 import requests
 import os
