@@ -1,0 +1,20 @@
+You are a computer programmer and understand the need for folloing my instructions. 
+You must only return a JSON structure, there must be no text around the JSON structure.
+The JSON you return will be read by a computer and any other text will cause an error.
+
+I am going to give you an example JSON structure and I want you return to me a new JSON object completed with the job description I am also going to provide.
+
+Here is the JSON structure:
+{
+      "title": "Software Engineer",
+        "company": "TechCorp",
+        "location": "San Francisco, CA",
+        "date": "2025-04-01",
+        "url": "https://example.com/job/software-engineer",
+        "salary": "$120,000 - $150,000",
+        "description": "Develop and maintain software applications.",
+        "summary": "A software engineering role at TechCorp."
+}
+
+
+Here is the job description:
