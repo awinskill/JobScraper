@@ -7,12 +7,16 @@ import requests
 import os
 import backoff
 import logging
+import configparser
+import openai
+
 
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from argparse import ArgumentParser
 
 
+config = configparser.ConfigParser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,6 +41,10 @@ salary_regex=[r'\$\d{1,3},?\d{1,3}\s?-?\s?\$\d{1,3},?\d{1,3}',
 
 session = requests.Session()
 
+
+username = None
+password = None
+linkedIn_url = None
 
 
 
@@ -64,6 +72,7 @@ class Job:
     def __repr__(self):    
         return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Description: {self.description}"
 
+
 #################################################
 ## UTILITY FUNCTIONS
 #################################################
@@ -76,7 +85,11 @@ def setup_args():
 
 # dumps the environment variables to the console
 # This is useful for debugging purposes
-def dump_env():
+def setup_env():
+    username = config["LinkedIn"]["LINKEDIN_USERNAME"]
+    password = config["LinkedIn"]["LINKEDIN_PASSWORD"]
+    linkedIn_url = config["LinkedIn"]["LINKEDIN_URL"].replace("\"","")
+
     print("LINKEDIN_USERNAME: ", os.getenv("LINKEDIN_USERNAME"))
     print("LINKEDIN_PASSWORD: ", os.getenv("LINKEDIN_PASSWORD"))
     print("LINKEDIN_URL: ", os.getenv("LINKEDIN_URL"))
