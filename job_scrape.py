@@ -1,18 +1,21 @@
 #######################################
-## JobScrape.py - LinkedIn Job Scraper
+## job_scrape.py - LinkedIn Job Scraper
 #######################################
 
-import re
-import requests
-import backoff
 import logging
-import configparser
-import openai
 import json
 
+import configparser
+from argparse import ArgumentParser
+
+
+import openai
+
+import requests
+import backoff
 
 from bs4 import BeautifulSoup
-from argparse import ArgumentParser
+from openai import OpenAIError
 
 # Global configuration
 config = configparser.ConfigParser()
@@ -20,6 +23,9 @@ config = configparser.ConfigParser()
 # Default HTTP settings for get_response
 http_max_tries=8
 http_max_time=60
+
+# Default for OpenAI decorator
+openai_max_tries=2
 
 ### GLOBALS ###
 # some globals to make the code cleaner
@@ -51,6 +57,7 @@ linkedIn_url = None
 
 # data class to hold the job details
 class Job:
+    """Job: Holds all the job information"""
     def __init__(self, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None):
         self.title = title
         self.company = company
@@ -65,9 +72,15 @@ class Job:
 
 
     def __str__(self):
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, Description: {self.description}, Summary: {self.summary}"
+        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, \
+            Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
+                Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
+                    Description: {self.description}, Summary: {self.summary}"
     def __repr__(self):    
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, Description: {self.description}, Summary: {self.summary}"
+        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, \
+            Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
+                Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
+                    Description: {self.description}, Summary: {self.summary}"
     
  # Add this method to convert the object to a dictionary to enable serialization into JSON
     def to_dict(self):
@@ -138,13 +151,11 @@ def get_job_description_page(url):
         if description_page.status_code == 200:
             return description_page.text
         else:
-            logging.error(f"Failed to retrieve job description page. Status code: {description_page.status_code}")
-            
+            logging.error("Failed to retrieve job description page. Status code: %s",description_page.status_code)         
     except requests.exceptions.ConnectionError as e:
-        logging.error(f"Connection error while fetching job description: {e}")
-        
+        logging.error("Connection error while fetching job description: %s", e)        
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error accessing page {e}")
+        logging.error("Error accessing page %s", e)
 
     return None
 
@@ -238,35 +249,7 @@ def create_tsv_file(jobs):
 
 
 
-def test():
-    # Create a sample Job object for testing
-    job = Job(
-        title="Software Engineer",
-        company="TechCorp",
-        location="San Francisco, CA",
-        date="2025-04-01",
-        url="https://example.com/job/software-engineer",
-        salary="$120,000 - $150,000",
-        salar_lower="$120,000",
-        salary_upper="$150,000",
-        description="Develop and maintain software applications.",
-        summary="A software engineering role at TechCorp."
-    )
-    
-    print(job)
- #  [
- #   {
- #       "title": "Software Engineer",
- #       "company": "TechCorp",
- #       "location": "San Francisco, CA",
- #       "date": "2025-04-01",
- #       "url": "https://example.com/job/software-engineer",
- #       "salary": "$120,000 - $150,000",
- #       "description": "Develop and maintain software applications.",
- #       "summary": "A software engineering role at TechCorp."
- #   }
- # ]
-
+@backoff.on_exception(backoff.expo, OpenAIError, max_tries=openai_max_tries)
 def query_openai(prompt, model="gpt-3.5-turbo", temp=0.1, max_tokens=500):
     try:
         response = openai.responses.create(
@@ -277,13 +260,14 @@ def query_openai(prompt, model="gpt-3.5-turbo", temp=0.1, max_tokens=500):
             max_output_tokens=max_tokens    # Adjust for response length
         )
         return response.output_text
-    except openai.error.OpenAIError as e:
-        print(f"Error querying OpenAI: {e}")
+    except openai.OpenAIError as e:
+        logging.error("Error querying OpenAI: %s",e)
+        # logging.error(f"Model: {model} Temperature: {temp} Max Output Tokens: {max_tokens} Prompt: {prompt}")
         return None
-    
 
 # read the prompt from the prompt file
 def load_prompt(filename):
+    """Load OpenAI Prompt"""
     # Open the file and read its contents
     contents = None
 
@@ -310,8 +294,9 @@ def get_job_json_via_genai(job):
 
     temp = float(config["OpenAI"]["TEMPERATURE"])
     max_tokens = int(config["OpenAI"]["MAX_TOKENS"])
+    openai_max_tries=int(config["OpenAI"]["OPENAI_MAX_RETRIES"])
 
-    logging.debug(f"Using model {model}")
+    logging.debug("Using model %s", model)
 
 
     response = query_openai(prompt, model, temp=temp, max_tokens=max_tokens)
@@ -335,6 +320,7 @@ def is_valid_json(json_string):
         json.loads(json_string)
         return True
     except json.JSONDecodeError as e:
+        logging.error("Invalid json %s", e)
         return False
 
 def convert_jobs_json(jobs_json):
@@ -342,7 +328,7 @@ def convert_jobs_json(jobs_json):
     jobs = []
     for job_json in jobs_json:
         if not is_valid_json(job_json):
-            logging.error(f"Invalid json {job_json} skipping")
+            logging.error("Invalid json skipping")
             continue
 
         # Parse each JSON string into a dictionary
@@ -379,46 +365,42 @@ def convert_jobs_json(jobs_json):
 #   4. Write the list of JSON objects into a TSV file for processing in Excel
 
 def main():
+    #setup commandline arguments
+    setup_args()
+    args = parser.parse_args()
 
-    if False:
-        test()
-    else:
-        #setup commandline arguments
-        setup_args()
-        args = parser.parse_args()
+    # load up the configuration
+    config.read("config.ini")
 
-        # load up the configuration
-        config.read("config.ini")
+    http_max_tries = config["HTTP"]["MAX_RETRIES"]
+    http_max_time = config["HTTP"]["MAX_TIME"]
 
-        http_max_tries = config["HTTP"]["MAX_RETRIES"]
-        http_max_time = config["HTTP"]["MAX_TIME"]
+    # Set up the HTTP session headers
+    setup_session()
+    
+    # Get the LinkedIn page
+    print("Going to LinkedIn")
+    page = get_linkedin_search_page()
+    logging.debug("Got the job search results")
 
-        # Set up the HTTP session headers
-        setup_session()
-        
-        # Get the LinkedIn page
-        print("Going to LinkedIn")
-        page = get_linkedin_search_page()
-        logging.debug("Got the job search results")
+    # Extract the jobs from the page
+    # should return an array of raw HTML
+    print("Scraping the jobs")
+    job_raw_contents = extract_jobs(page)
+    logging.debug("Extracted the jobs")
 
-        # Extract the jobs from the page
-        # should return an array of raw HTML
-        print("Scraping the jobs")
-        job_raw_contents = extract_jobs(page)
-        logging.debug("Extracted the jobs")
+    # Get the JSON
+    print("Going to GenAI")
+    jobs_json = convert_via_genai(job_raw_contents)
 
-        # Get the JSON
-        print("Going to GenAI")
-        jobs_json = convert_via_genai(job_raw_contents)
+    # Turn the JSON into objects
+    jobs = convert_jobs_json(jobs_json)
 
-        # Turn the JSON into objects
-        jobs = convert_jobs_json(jobs_json)
+    # Create a TSV file to store the job details
 
-        # Create a TSV file to store the job details
-   
-        #print(f"Jobs found: {len(jobs)} writing TSV file")
-        create_tsv_file(jobs)
-        return jobs_json
+    #print(f"Jobs found: {len(jobs)} writing TSV file")
+    create_tsv_file(jobs)
+    return jobs_json
 
 
 
@@ -430,3 +412,4 @@ if __name__ == "__main__":
     # dump_env()
     
     jobs = main()
+    
