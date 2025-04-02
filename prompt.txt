@@ -12,9 +12,18 @@ Here is the JSON structure:
         "date": "2025-04-01",
         "url": "https://example.com/job/software-engineer",
         "salary": "$120,000 - $150,000",
+        "salary_lower": "$120,000",
+        "salary_upper": "$150,000",
         "description": "Develop and maintain software applications.",
         "summary": "A software engineering role at TechCorp."
 }
 
+Here is some guidance on completing the JSON structure. 
+The salary_lower field should be the smallest number in the salary field. 
+The salary_upper should be the largest number in the salary field.
+The description field should be no more than a paragraph and should include the key skills needed for the role.
+Do not include any non printable characters such as tab characters in the output
+
+Reminder, only return valid JSON and nothing else
 
 Here is the job description:

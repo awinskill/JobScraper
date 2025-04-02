@@ -51,21 +51,23 @@ linkedIn_url = None
 
 # data class to hold the job details
 class Job:
-    def __init__(self, title, company, location, date, url=None, salary=None, description=None, summary=None):
+    def __init__(self, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None):
         self.title = title
         self.company = company
         self.location = location
         self.date = date
         self.url = url
         self.salary = salary
+        self.salary_lower = salary_lower
+        self.salary_upper = salary_upper
         self.description = description
         self.summary = summary
 
 
     def __str__(self):
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Description: {self.description}, Summary: {self.summary}"
+        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, Description: {self.description}, Summary: {self.summary}"
     def __repr__(self):    
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Description: {self.description}, Summary: {self.summary}"
+        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, Date: {self.date}, URL: {self.url}, Salary: {self.salary}, Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, Description: {self.description}, Summary: {self.summary}"
     
  # Add this method to convert the object to a dictionary to enable serialization into JSON
     def to_dict(self):
@@ -76,6 +78,8 @@ class Job:
             "date": self.date,
             "url": self.url,
             "salary": self.salary,
+            "salary_lower": self.salary_lower,
+            "salary_upper": self.salary_upper,
             "description": self.description,
             "summary": self.summary,
         }
@@ -224,12 +228,13 @@ def get_linkedin_search_page():
 # Create a Tab Separated Values (TSV) file to store the job details    
 def create_tsv_file(jobs):
     # Create a TSV file to store the job details
-    with open(parser.parse_args().output, "w",) as file:
+    with open(parser.parse_args().output, "w") as file:
         # Write the header
-        file.write("Title\tCompany\tLocation\tDate\tSalary\tURL\tSummary\tDescription\n")
+        file.write("Title\tCompany\tLocation\tDate\tSalary\tSalary_Lower\tSalary_Upper\tSummary\tDescription\tURL\n")
+
         # Write the job details
         for job in jobs:
-            file.write(f"{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.url}\t{job.summary}\t{job.description}\n")
+            file.write(f"{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\n")
 
 
 
@@ -242,6 +247,8 @@ def test():
         date="2025-04-01",
         url="https://example.com/job/software-engineer",
         salary="$120,000 - $150,000",
+        salar_lower="$120,000",
+        salary_upper="$150,000",
         description="Develop and maintain software applications.",
         summary="A software engineering role at TechCorp."
     )
@@ -310,7 +317,8 @@ def get_job_json_via_genai(job):
     response = query_openai(prompt, model, temp=temp, max_tokens=max_tokens)
 
     logging.debug(response)
-    return response.replace("`","").replace("json","")
+    #clean up the response and return
+    return response.replace("`","").replace("json","").replace("\t"," ").replace("\n"," ").replace("\r"," ")
 
 # convert via genAI
 def convert_via_genai(raw_jobs):
@@ -341,6 +349,7 @@ def convert_jobs_json(jobs_json):
         job_dict = json.loads(job_json)
         
         # Convert the dictionary into a Job object
+        # checking there are no tab characters in the JSON
         job = Job(
             title=job_dict.get("title"),
             company=job_dict.get("company"),
@@ -348,6 +357,8 @@ def convert_jobs_json(jobs_json):
             date=job_dict.get("date"),
             url=job_dict.get("url"),
             salary=job_dict.get("salary"),
+            salary_lower=job_dict.get("salary_lower"),
+            salary_upper=job_dict.get("salary_upper"),
             description=job_dict.get("description"),
             summary=job_dict.get("summary")
         )
