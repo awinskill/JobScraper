@@ -260,14 +260,14 @@ def test():
  #   }
  # ]
 
-def query_openai(prompt, model="gpt-3.5-turbo"):
+def query_openai(prompt, model="gpt-3.5-turbo", temp=0.1, max_tokens=500):
     try:
         response = openai.responses.create(
             model=model,
             instructions="You are a computer programmer & you will follow the instructions carefully.",
             input= prompt,
-            temperature=0.1,  # Adjust for creativity (0.0 = deterministic, 1.0 = more creative)
-            max_output_tokens=500    # Adjust for response length
+            temperature=temp,  # Adjust for creativity (0.0 = deterministic, 1.0 = more creative)
+            max_output_tokens=max_tokens    # Adjust for response length
         )
         return response.output_text
     except openai.error.OpenAIError as e:
@@ -301,8 +301,13 @@ def get_job_json_via_genai(job):
     model = config["OpenAI"]["MODEL"]
     openai.api_key = config["OpenAI"]["OPENAI_API_KEY"]
 
+    temp = float(config["OpenAI"]["TEMPERATURE"])
+    max_tokens = int(config["OpenAI"]["MAX_TOKENS"])
+
     logging.debug(f"Using model {model}")
-    response = query_openai(prompt, model)
+
+
+    response = query_openai(prompt, model, temp=temp, max_tokens=max_tokens)
 
     logging.debug(response)
     return response.replace("`","").replace("json","")
