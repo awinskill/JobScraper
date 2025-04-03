@@ -1,6 +1,10 @@
 #######################################
 ## job_scrape.py - LinkedIn Job Scraper
 #######################################
+# pylint: disable=invalid-name
+# pylint: disable=line-too-long
+# pylint: disable=trailing-whitespace
+
 import sys
 import logging
 import json
