@@ -20,8 +20,8 @@ Here is the JSON structure:
 }
 
 Here is some guidance on completing the JSON structure. 
-The salary_lower field should be the smallest number in the salary field. 
-The salary_upper should be the largest number in the salary field.
+The salary_lower field should be the smallest number in the salary field, if you cannot identify the salary_lower, you should return 0
+The salary_upper should be the largest number in the salary field, if you cannot identify the salary_upper, you should return 0
 The description field should be no more than a paragraph and should include the key skills needed for the role.
 The linkedin_id can be found by taking the last digits from the URL.
 Do not include any non printable characters such as tab characters in the output

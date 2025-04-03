@@ -4,6 +4,7 @@
 # pylint: disable=invalid-name
 # pylint: disable=line-too-long
 # pylint: disable=trailing-whitespace
+# pylint: disable=missing-function-docstring
 
 import sys
 import logging
