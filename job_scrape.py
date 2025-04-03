@@ -1,7 +1,7 @@
 #######################################
 ## job_scrape.py - LinkedIn Job Scraper
 #######################################
-
+import sys
 import logging
 import json
 
@@ -10,7 +10,6 @@ from argparse import ArgumentParser
 
 
 import openai
-
 import requests
 import backoff
 
@@ -18,14 +17,14 @@ from bs4 import BeautifulSoup
 from openai import OpenAIError
 
 # Global configuration
-config = configparser.ConfigParser()
+config = configparser.RawConfigParser()
 
 # Default HTTP settings for get_response
-http_max_tries=8
+http_max_tries = 8
 http_max_time=60
 
 # Default for OpenAI decorator
-openai_max_tries=2
+openai_max_tries=8
 
 ### GLOBALS ###
 # some globals to make the code cleaner
@@ -51,14 +50,15 @@ session = requests.Session()
 
 username = None
 password = None
-linkedIn_url = None
+linkedin_url = None
 
 
 
 # data class to hold the job details
 class Job:
     """Job: Holds all the job information"""
-    def __init__(self, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None):
+    def __init__(self, linkedin_id, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None):
+        self.linkedin_id = linkedin_id
         self.title = title
         self.company = company
         self.location = location
@@ -72,12 +72,12 @@ class Job:
 
 
     def __str__(self):
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, \
+        return f"ID: {self.linkedin_id},Title: {self.title}, Company: {self.company}, Location: {self.location}, \
             Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
                 Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
                     Description: {self.description}, Summary: {self.summary}"
     def __repr__(self):    
-        return f"Title: {self.title}, Company: {self.company}, Location: {self.location}, \
+        return f"ID: {self.linkedin_id},Title: {self.title}, Company: {self.company}, Location: {self.location}, \
             Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
                 Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
                     Description: {self.description}, Summary: {self.summary}"
@@ -85,6 +85,7 @@ class Job:
  # Add this method to convert the object to a dictionary to enable serialization into JSON
     def to_dict(self):
         return {
+            "id": self.linkedin_id,
             "title": self.title,
             "company": self.company,
             "location": self.location,
@@ -106,6 +107,7 @@ def setup_args():
     parser.add_argument("-p", "--password", help="LinkedIn password", required=False)
     parser.add_argument("-l", "--url", help="LinkedIn URL", required=False)
     parser.add_argument("-o", "--output", help="Output file name", required=False, default="jobs.tsv")
+    parser.parse_args()
 
 
 # Function to set up the HTTP session
@@ -132,9 +134,9 @@ def get_response(url):
 
     if response.status_code == 200:
         return response
-    else:
-        print(f"Failed with status code: {response.status_code}")
-        return None
+    
+    logging.error("Failed with status code: %s", response.status_code)
+    return None
     
 
 
@@ -150,13 +152,13 @@ def get_job_description_page(url):
         description_page = get_response(url)
         if description_page.status_code == 200:
             return description_page.text
-        else:
-            logging.error("Failed to retrieve job description page. Status code: %s",description_page.status_code)         
+  
     except requests.exceptions.ConnectionError as e:
         logging.error("Connection error while fetching job description: %s", e)        
     except requests.exceptions.RequestException as e:
         logging.error("Error accessing page %s", e)
 
+    logging.error("Failed to retrieve job description page. Status code: %s",description_page.status_code)   
     return None
 
 # Function to extract job details from a job element (job card on LinkedIn)
@@ -167,8 +169,8 @@ def extract_job_details(job_element):
     # Get the job description page
     if url is not None:
         return get_job_description_page(url)
-    else:
-        return None
+    
+    return None
     
 
     
@@ -195,6 +197,12 @@ def extract_jobs(soup):
 #####################################################
 
 def get_linkedin_search_page():
+    # pylint: disable=global-statement
+    """ Uses global variables and will generate a pylint warning """
+
+    global linkedin_url
+    global password
+    global username
 
         # Check if the parameters were passed, and set the access variables
     if parser.parse_args().username:
@@ -208,23 +216,29 @@ def get_linkedin_search_page():
         password = config["LinkedIn"]["LINKEDIN_PASSWORD"]
 
     if parser.parse_args().url:
-        url = parser.parse_args().url
+        linkedin_url = parser.parse_args().url
     else:
-        url = config["LinkedIn"]["LINKEDIN_URL"].replace("\"","") #config URL will be in ""
+        linkedin_url = config["LinkedIn"]["LINKEDIN_URL"]
+
+        if linkedin_url is not None:
+            linkedin_url = linkedin_url.replace("\"","")
+        else:
+            logging.error("Unable to load LINKEDIN_URL")
+            return None
 
    
 
     session.auth = (username, password)
     # Make a GET request to the LinkedIn page using the session
     # Use the session to make the request
-    search_page = get_response(url)
+    search_page = get_response(linkedin_url)
     if search_page.status_code == 429:
         raise requests.exceptions.RequestException("Rate limit exceeded")
 
     # Check if the request was successful (status code 200)
     if search_page.status_code != 200:
         logging.error("Failed to retrieve the page")
-        exit(0)
+        sys.exit(0)
 
     soup = BeautifulSoup(search_page.content, "html.parser")
 
@@ -239,13 +253,13 @@ def get_linkedin_search_page():
 # Create a Tab Separated Values (TSV) file to store the job details    
 def create_tsv_file(jobs):
     # Create a TSV file to store the job details
-    with open(parser.parse_args().output, "w") as file:
+    with open(parser.parse_args().output, "w", encoding="utf-8")  as file:
         # Write the header
-        file.write("Title\tCompany\tLocation\tDate\tSalary\tSalary_Lower\tSalary_Upper\tSummary\tDescription\tURL\n")
+        file.write("ID\tTitle\tCompany\tLocation\tDate\tSalary\tSalary_Lower\tSalary_Upper\tSummary\tDescription\tURL\n")
 
         # Write the job details
         for job in jobs:
-            file.write(f"{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\n")
+            file.write(f"{job.linkedin_id}\t{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\n")
 
 
 
@@ -275,12 +289,11 @@ def load_prompt(filename):
         contents = file.read()
 
     return contents
-
-
-
-    
+ 
 
 def get_job_json_via_genai(job):
+    # pylint: disable=global-statement
+
     prompt = None
     model = None
    
@@ -294,6 +307,8 @@ def get_job_json_via_genai(job):
 
     temp = float(config["OpenAI"]["TEMPERATURE"])
     max_tokens = int(config["OpenAI"]["MAX_TOKENS"])
+    
+    global openai_max_tries
     openai_max_tries=int(config["OpenAI"]["OPENAI_MAX_RETRIES"])
 
     logging.debug("Using model %s", model)
@@ -303,7 +318,10 @@ def get_job_json_via_genai(job):
 
     logging.debug(response)
     #clean up the response and return
-    return response.replace("`","").replace("json","").replace("\t"," ").replace("\n"," ").replace("\r"," ")
+    if response is not None:
+        return response.replace("`","").replace("json","").replace("\t"," ").replace("\n"," ").replace("\r"," ")
+    
+    return None
 
 # convert via genAI
 def convert_via_genai(raw_jobs):
@@ -337,6 +355,7 @@ def convert_jobs_json(jobs_json):
         # Convert the dictionary into a Job object
         # checking there are no tab characters in the JSON
         job = Job(
+            linkedin_id=job_dict.get("linkedin_id"),
             title=job_dict.get("title"),
             company=job_dict.get("company"),
             location=job_dict.get("location"),
@@ -365,19 +384,24 @@ def convert_jobs_json(jobs_json):
 #   4. Write the list of JSON objects into a TSV file for processing in Excel
 
 def main():
+    # pylint: disable=global-statement
+
+    """ Main routine """
     #setup commandline arguments
     setup_args()
-    args = parser.parse_args()
+    
 
     # load up the configuration
     config.read("config.ini")
 
-    http_max_tries = config["HTTP"]["MAX_RETRIES"]
+    global http_max_tries
+    global http_max_time
+
+    http_max_tries= config["HTTP"]["MAX_RETRIES"]
     http_max_time = config["HTTP"]["MAX_TIME"]
 
     # Set up the HTTP session headers
     setup_session()
-    
     # Get the LinkedIn page
     print("Going to LinkedIn")
     page = get_linkedin_search_page()
@@ -406,10 +430,8 @@ def main():
 
 
 if __name__ == "__main__":
-    
     logging.basicConfig(level=logging.ERROR)
     logging.debug("Starting LinkedIn Job Scraper")
     # dump_env()
-    
-    jobs = main()
-    
+    joblist = main()
+

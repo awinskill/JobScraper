@@ -6,11 +6,12 @@ I am going to give you an example JSON structure and I want you return to me a n
 
 Here is the JSON structure:
 {
-      "title": "Software Engineer",
+        "linkedin_id": "123456"
+        "title": "Software Engineer",
         "company": "TechCorp",
         "location": "San Francisco, CA",
         "date": "2025-04-01",
-        "url": "https://example.com/job/software-engineer",
+        "url": "https://example.com/job/software-engineer-123456",
         "salary": "$120,000 - $150,000",
         "salary_lower": "$120,000",
         "salary_upper": "$150,000",
@@ -22,6 +23,7 @@ Here is some guidance on completing the JSON structure.
 The salary_lower field should be the smallest number in the salary field. 
 The salary_upper should be the largest number in the salary field.
 The description field should be no more than a paragraph and should include the key skills needed for the role.
+The linkedin_id can be found by taking the last digits from the URL.
 Do not include any non printable characters such as tab characters in the output
 
 Reminder, only return valid JSON and nothing else
