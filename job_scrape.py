@@ -5,6 +5,9 @@
 # pylint: disable=line-too-long
 # pylint: disable=trailing-whitespace
 # pylint: disable=missing-function-docstring
+# pylint: disable=missing-module-docstring
+# pylint: disable=trailing-newlines
+
 
 import sys
 import logging
@@ -138,6 +141,7 @@ def get_response(url):
         raise requests.exceptions.RequestException("Rate limit exceeded")
 
     if response.status_code == 200:
+        logging.debug("HTTP Response: returning valid response")
         return response
     
     logging.error("Failed with status code: %s", response.status_code)
@@ -184,6 +188,8 @@ def extract_job_details(job_element):
 # The soup object will be passed to this function
 def extract_jobs(soup):
     logging.debug(">")
+    # job_string = "scaffold-layout__list "
+    print(f"Extracting jobs with {job_string}")
     job_elements = soup.find_all('div', {'class': job_string})
     
     jobs = []
@@ -192,6 +198,7 @@ def extract_jobs(soup):
         job = extract_job_details(job_element)
         jobs.append(job)
     
+    print(f"Found {len(jobs)} jobs")
     return jobs
 
 
@@ -232,6 +239,7 @@ def get_linkedin_search_page():
             return None
 
    
+    print(linkedin_url)
 
     session.auth = (username, password)
     # Make a GET request to the LinkedIn page using the session
@@ -247,6 +255,7 @@ def get_linkedin_search_page():
 
     soup = BeautifulSoup(search_page.content, "html.parser")
 
+    print("Got the LinkedIn page")
     return soup
 
 
@@ -339,6 +348,11 @@ def convert_via_genai(raw_jobs):
 
 #check the JSON string can be processed
 def is_valid_json(json_string):
+
+    if (json_string is None) or (len(json_string) == 0):
+        logging.error("Empty JSON string")
+        return False
+    
     try:
         json.loads(json_string)
         return True
