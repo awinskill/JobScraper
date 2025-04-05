@@ -1,0 +1,6 @@
+openai
+pyodbc
+fastapi
+uvicorn[standard]
+pydantic
+azure-identity
