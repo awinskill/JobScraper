@@ -20,9 +20,25 @@ from argparse import ArgumentParser
 import openai
 import requests
 import backoff
+import pyodbc
+# import pymssql
+import os
+
 
 from bs4 import BeautifulSoup
 from openai import OpenAIError
+
+
+from sqlalchemy import ForeignKey
+from sqlalchemy import String
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import relationship
+
+
+class Base(DeclarativeBase):
+    pass
 
 # Global configuration
 config = configparser.RawConfigParser()
@@ -60,6 +76,12 @@ username = None
 password = None
 linkedin_url = None
 
+
+
+
+
+
+        
 
 
 # data class to hold the job details
@@ -105,6 +127,78 @@ class Job:
             "description": self.description,
             "summary": self.summary,
         }
+    
+
+# Azure SQL
+
+def convert_to_int(value):
+    if type(value) is not int:
+        # remove any non-numeric characters
+        value = ''.join(filter(str.isdigit, value))
+        # convert to int
+        return int(value) if value else None
+    
+    return value
+
+
+
+
+def get_conn(connection_string):
+    try:
+        connection = pyodbc.connect(connection_string)
+
+        if connection is None:
+            logging.error("Unable to connect to Azure SQL")
+            return None
+        logging.debug("Connected to Azure SQL")
+        return connection
+    except pyodbc.Error as e:
+        logging.error("Error connecting to Azure SQL: %s", e)
+        return None
+    except Exception as e:
+        logging.error("Error connecting to Azure SQL: %s", e)
+        return None
+
+def get_cursor(connection):
+    cursor = connection.cursor()
+
+    if cursor is None:
+        logging.error("Unable to get cursor")
+        return None
+    logging.debug("Got cursor")
+    return cursor
+
+def add_job_to_db(connection_string, job):
+    connection = get_conn(connection_string)
+
+    if connection is None:
+        logging.error("Unable to connect to Azure SQL")
+        return False
+    
+    cursor = get_cursor(connection)
+
+    if cursor is None:
+        logging.error("Unable to get cursor")
+        return False
+
+    # Insert the job into the database
+    try:
+        cursor.execute(
+            'INSERT INTO LinkedInJobs (id, title, company, location, date, url, salary_lower, salary_upper, description, summary, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (convert_to_int(job.linkedin_id), job.title, job.company, job.location, job.date, job.url, convert_to_int(job.salary_lower), convert_to_int(job.salary_upper), job.description, job.summary, job.salary)
+        )
+    except pyodbc.IntegrityError as e:
+        logging.error("Job already exists in database: %s", e)
+        return False
+    except pyodbc.Error as e:
+        logging.error("Error inserting job into database: %s", e)
+        return False
+
+    # Commit the changes
+    connection.commit()
+
+    logging.debug("Job added to database")
+    return True
 
 #################################################
 ## UTILITY FUNCTIONS
@@ -276,6 +370,12 @@ def create_tsv_file(jobs):
             file.write(f"{job.linkedin_id}\t{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\n")
 
 
+# Create a Tab Separated Values (TSV) file to store the job details    
+def upload_to_db(connection_string, jobs):
+ 
+    for job in jobs:
+        # Add the job to the database
+        add_job_to_db(connection_string, job)
 
 @backoff.on_exception(backoff.expo, OpenAIError, max_tries=openai_max_tries)
 def query_openai(prompt, model="gpt-3.5-turbo", temp=0.1, max_tokens=500):
@@ -443,6 +543,10 @@ def main():
 
     #print(f"Jobs found: {len(jobs)} writing TSV file")
     create_tsv_file(jobs)
+    
+    print("Uploading to DB")
+    upload_to_db(config["Azure"]["AZURE_SQL_CONNECTIONSTRING"].replace("\"",""), jobs)
+    print("Done")
     return jobs_json
 
 

@@ -1,0 +1,5 @@
+{
+    "dataworkspace.excludedProjects": [
+        "DatabaseProject/LinkedInJobs/DatabaseProjectPersonalDevelopment/DatabaseProjectPersonalDevelopment.sqlproj"
+    ]
+}
