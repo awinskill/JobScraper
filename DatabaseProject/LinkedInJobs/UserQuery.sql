@@ -1,1 +1,2 @@
-SELECT * From LinkedInJobs
+ALTER TABLE dbo.LinkedInJobs
+ALTER COLUMN url VARCHAR(MAX);
