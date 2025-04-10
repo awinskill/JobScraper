@@ -17,6 +17,7 @@ Here is the JSON structure:
         "salary_upper": "$150,000",
         "description": "Develop and maintain software applications.",
         "summary": "A software engineering role at TechCorp."
+        "fit":"8"
 }
 
 Here is some guidance on completing the JSON structure. 
@@ -25,6 +26,13 @@ The salary_upper should be the largest number in the salary field, if you cannot
 The description field should be no more than a paragraph and should include the key skills needed for the role.
 The linkedin_id can be found by taking the last digits from the URL.
 Do not include any non printable characters such as tab characters in the output
+The fit attribute is a score out of 10 for how the job fits with the resumes that have been uploaded to you. 
+Here are some guidelines for the job fit score:
+        A job fit of 8 or higher would mean this job is a great fit, and absolutely should apply
+        If a job's upper salary is less than $250,000, then the job cannot have a fit score of 8 or higher
+        A job fit of 5 to 8 means the job could be a good fit, but you really need to review the job description carefully, the job may be less than $250,000
+        A job fit of less than 5, really shouldn't waste your time in applying.
+
 
 Reminder, only return valid JSON and nothing else
 

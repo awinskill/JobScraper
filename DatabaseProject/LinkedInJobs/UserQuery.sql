@@ -1,2 +1,2 @@
-ALTER TABLE dbo.LinkedInJobs
-ALTER COLUMN url VARCHAR(MAX);
+select * from dbo.LinkedInJobs
+order by salary_upper desc

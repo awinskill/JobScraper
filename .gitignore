@@ -1,3 +1,5 @@
 config.ini
 jobs.tsv
 ~$ProcessedResults.xlsx
+UserQuery.sql
+Resume/*

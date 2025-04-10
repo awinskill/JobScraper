@@ -23,6 +23,7 @@ import backoff
 import pyodbc
 # import pymssql
 import os
+import re
 
 
 from bs4 import BeautifulSoup
@@ -87,7 +88,7 @@ linkedin_url = None
 # data class to hold the job details
 class Job:
     """Job: Holds all the job information"""
-    def __init__(self, linkedin_id, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None):
+    def __init__(self, linkedin_id, title, company, location, date, url=None, salary=None, salary_lower=None, salary_upper=None,description=None, summary=None, fit=None):
         self.linkedin_id = linkedin_id
         self.title = title
         self.company = company
@@ -99,18 +100,19 @@ class Job:
         self.salary_upper = salary_upper
         self.description = description
         self.summary = summary
+        self.fit = fit
 
 
     def __str__(self):
         return f"ID: {self.linkedin_id},Title: {self.title}, Company: {self.company}, Location: {self.location}, \
             Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
                 Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
-                    Description: {self.description}, Summary: {self.summary}"
+                    Description: {self.description}, Summary: {self.summary}, Fit: {self.fit}"
     def __repr__(self):    
         return f"ID: {self.linkedin_id},Title: {self.title}, Company: {self.company}, Location: {self.location}, \
             Date: {self.date}, URL: {self.url}, Salary: {self.salary}, \
                 Salary_Lower: {self.salary_lower}, Salary_Upper: {self.salary_upper}, \
-                    Description: {self.description}, Summary: {self.summary}"
+                    Description: {self.description}, Summary: {self.summary}, Fit: {self.fit}"
     
  # Add this method to convert the object to a dictionary to enable serialization into JSON
     def to_dict(self):
@@ -126,6 +128,7 @@ class Job:
             "salary_upper": self.salary_upper,
             "description": self.description,
             "summary": self.summary,
+            "fit": self.fit
         }
     
 
@@ -133,11 +136,22 @@ class Job:
 
 def convert_to_int(value):
     if type(value) is not int:
+        """
         # remove any non-numeric characters
         value = ''.join(filter(str.isdigit, value))
         # convert to int
         return int(value) if value else None
-    
+        """
+        
+        stripped_value = re.sub('[^0-9.]', '', value)
+        if stripped_value is not None:
+            # see if it's xxx.00 and then remove the .00
+            if stripped_value.find(".") != -1:
+                stripped_value = stripped_value.split(".")[0]
+
+            value_ = int(stripped_value)
+        
+            return value_
     return value
 
 
@@ -184,12 +198,14 @@ def add_job_to_db(connection_string, job):
     # Insert the job into the database
     try:
         cursor.execute(
-            'INSERT INTO LinkedInJobs (id, title, company, location, date, url, salary_lower, salary_upper, description, summary, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (convert_to_int(job.linkedin_id), job.title, job.company, job.location, job.date, job.url, convert_to_int(job.salary_lower), convert_to_int(job.salary_upper), job.description, job.summary, job.salary)
+            'INSERT INTO LinkedInJobs (id, title, company, location, date, url, salary_lower, salary_upper, description, summary, salary, fit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (convert_to_int(job.linkedin_id), job.title, job.company, job.location, job.date, job.url, convert_to_int(job.salary_lower), convert_to_int(job.salary_upper), job.description, job.summary, job.salary, convert_to_int(job.fit))
         )
     except pyodbc.IntegrityError as e:
-        logging.error("Job already exists in database: %s", e)
-        return False
+        # this is a common error when the job already exists in the database
+        # log this as Info, not an error & return true as the job is already in the database
+        logging.info("Job already exists in database. Skipping")
+        return True
     except pyodbc.Error as e:
         logging.error("Error inserting job into database: %s", e)
         return False
@@ -209,6 +225,8 @@ def setup_args():
     parser.add_argument("-p", "--password", help="LinkedIn password", required=False)
     parser.add_argument("-l", "--url", help="LinkedIn URL", required=False)
     parser.add_argument("-o", "--output", help="Output file name", required=False, default="jobs.tsv")
+    parser.add_argument("-i", "--info", help="Show info", required=False, default=False, action="store_true")
+    parser.add_argument("-rr","--resetresumes", help="Reset the resume files", required=False, default=False, action="store_true")
     parser.parse_args()
 
 
@@ -283,7 +301,7 @@ def extract_job_details(job_element):
 def extract_jobs(soup):
     logging.debug(">")
     # job_string = "scaffold-layout__list "
-    print(f"Extracting jobs with {job_string}")
+    logging.debug(f"Extracting jobs with {job_string}")
     job_elements = soup.find_all('div', {'class': job_string})
     
     jobs = []
@@ -292,7 +310,7 @@ def extract_jobs(soup):
         job = extract_job_details(job_element)
         jobs.append(job)
     
-    print(f"Found {len(jobs)} jobs")
+    logging.info(f"Found {len(jobs)} jobs")
     return jobs
 
 
@@ -333,7 +351,7 @@ def get_linkedin_search_page():
             return None
 
    
-    print(linkedin_url)
+    logging.info(f"Search URL {linkedin_url}")
 
     session.auth = (username, password)
     # Make a GET request to the LinkedIn page using the session
@@ -349,7 +367,7 @@ def get_linkedin_search_page():
 
     soup = BeautifulSoup(search_page.content, "html.parser")
 
-    print("Got the LinkedIn page")
+    logging.debug("Got the LinkedIn page")
     return soup
 
 
@@ -363,11 +381,11 @@ def create_tsv_file(jobs):
     # Create a TSV file to store the job details
     with open(parser.parse_args().output, "w", encoding="utf-8")  as file:
         # Write the header
-        file.write("ID\tTitle\tCompany\tLocation\tDate\tSalary\tSalary_Lower\tSalary_Upper\tSummary\tDescription\tURL\n")
+        file.write("ID\tTitle\tCompany\tLocation\tDate\tSalary\tSalary_Lower\tSalary_Upper\tSummary\tDescription\tURL\tFit\n")
 
         # Write the job details
         for job in jobs:
-            file.write(f"{job.linkedin_id}\t{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\n")
+            file.write(f"{job.linkedin_id}\t{job.title}\t{job.company}\t{job.location}\t{job.date}\t{job.salary}\t{job.salary_lower}\t{job.salary_upper}\t{job.summary}\t{job.description}\t{job.url}\t{job.fit}\n")
 
 
 # Create a Tab Separated Values (TSV) file to store the job details    
@@ -377,13 +395,99 @@ def upload_to_db(connection_string, jobs):
         # Add the job to the database
         add_job_to_db(connection_string, job)
 
+
+
+### Open AI things
+def reset_openai_files():
+    # Reset the OpenAI files
+    try:
+        setup_openai_key()
+        filelist = openai.files.list()
+        for file in filelist.data:
+            if file.purpose == "user_data":
+                openai.files.delete(file.id)
+                logging.info(f"Deleted file {file.id} from OpenAI")
+    except openai.OpenAIError as e:
+        logging.error(f"Error deleting OpenAI files: %s", e)
+        return None
+    
+    except Exception as e:
+        logging.error(f"General Error deleting OpenAI files: %s", e)
+        return None
+    
+    return True
+## Get list of resume
+def get_resume_files():
+    # Get the list of resume files
+    resume_files = []
+    resume_dir = config["Resume"]["RESUME_DIR"]
+    for file in os.listdir( resume_dir ):
+        if file.endswith(".pdf"):
+            filename = os.path.join(resume_dir, file)
+            resume_files.append(filename)
+            logging.info(f"Found resume file: {filename}")
+    
+    return resume_files
+
+
+def make_input_string(prompt, fileids):
+
+    # Add files
+    input='[ {"role": "user", "content": ['
+    for file in fileids:
+        input += f' {{ "type": "input_file", "file_id": {file}, }},'
+    input+= "]"
+
+    # Add prompt
+    input += f', {{"type": "input_text", "text": {prompt} }} ]'    
+
+    return input
+
+
+@backoff.on_exception(backoff.expo, OpenAIError, max_tries=openai_max_tries)
+def upload_resume_files():
+    try:
+        fileids = []
+
+        for filename in get_resume_files():
+                # Upload the file to OpenAI
+                file = openai.files.create(
+                    file=open(filename, "rb"),
+                    purpose="user_data" 
+                )
+                logging.info(f"Uploaded {file} to OpenAI")
+                
+                fileids.append(file.id)
+
+        return fileids
+    
+    except openai.OpenAIError as e:
+        logging.error(f"Error uploading resume files: %s", e)
+        return None
+
+
+
+
 @backoff.on_exception(backoff.expo, OpenAIError, max_tries=openai_max_tries)
 def query_openai(prompt, model="gpt-3.5-turbo", temp=0.1, max_tokens=500):
     try:
+
+        # Check if the files are already uploaded
+        filelist = openai.files.list()
+        fileids = []
+
+        if not any(filelist):
+            logging.error("No files found in OpenAI")
+            fileids = upload_resume_files()
+
+        input_string = make_input_string(prompt, filelist)
+
+        logging.debug(f"Input string: {input_string}")
+
         response = openai.responses.create(
             model=model,
             instructions="You are a computer programmer & you will follow the instructions carefully.",
-            input= prompt,
+            input= input_string,
             temperature=temp,  # Adjust for creativity (0.0 = deterministic, 1.0 = more creative)
             max_output_tokens=max_tokens    # Adjust for response length
         )
@@ -404,6 +508,18 @@ def load_prompt(filename):
 
     return contents
  
+def setup_openai_key():
+    try:
+        openai.api_key = config["OpenAI"]["OPENAI_API_KEY"]
+    except KeyError:
+        logging.error("OpenAI API key not found in config file")
+        return None
+    except Exception as e:
+        logging.error("Error setting up OpenAI API key: %s", e)
+        return None
+    return True
+
+
 
 def get_job_json_via_genai(job):
     # pylint: disable=global-statement
@@ -416,9 +532,10 @@ def get_job_json_via_genai(job):
     # add the HTML job page to the prompt
     prompt = prompt + ". Here is the job description: " + job
 
+    # Set up the OpenAI API key
+    setup_openai_key()
+     
     model = config["OpenAI"]["MODEL"]
-    openai.api_key = config["OpenAI"]["OPENAI_API_KEY"]
-
     temp = float(config["OpenAI"]["TEMPERATURE"])
     max_tokens = int(config["OpenAI"]["MAX_TOKENS"])
     
@@ -441,6 +558,7 @@ def get_job_json_via_genai(job):
 def convert_via_genai(raw_jobs):
     # for each raw page, go to genAI and get the JSON object filled
     jobs = []
+
     for job in raw_jobs:
         jobs.append(get_job_json_via_genai(job))
 
@@ -484,7 +602,8 @@ def convert_jobs_json(jobs_json):
             salary_lower=job_dict.get("salary_lower"),
             salary_upper=job_dict.get("salary_upper"),
             description=job_dict.get("description"),
-            summary=job_dict.get("summary")
+            summary=job_dict.get("summary"),
+            fit=job_dict.get("fit")
         )
         jobs.append(job)
     
@@ -504,14 +623,11 @@ def convert_jobs_json(jobs_json):
 
 def main():
     # pylint: disable=global-statement
-
-    """ Main routine """
-    #setup commandline arguments
-    setup_args()
     
 
     # load up the configuration
     config.read("config.ini")
+
 
     global http_max_tries
     global http_max_time
@@ -519,21 +635,37 @@ def main():
     http_max_tries= config["HTTP"]["MAX_RETRIES"]
     http_max_time = config["HTTP"]["MAX_TIME"]
 
+    #setup commandline arguments
+    setup_args()
+   
+    if parser.parse_args().info:
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig(level=logging.ERROR)
+    
+    logging.debug("Starting LinkedIn Job Scraper")
+    # dump_env()
+
+    if parser.parse_args().resetresumes:
+        logging.info("Resetting OpenAI files")
+        reset_openai_files()
+
+
     # Set up the HTTP session headers
     setup_session()
     # Get the LinkedIn page
-    print("Going to LinkedIn")
+    logging.info("Going to LinkedIn")
     page = get_linkedin_search_page()
     logging.debug("Got the job search results")
 
     # Extract the jobs from the page
     # should return an array of raw HTML
-    print("Scraping the jobs")
+    logging.info("Scraping the jobs")
     job_raw_contents = extract_jobs(page)
     logging.debug("Extracted the jobs")
 
     # Get the JSON
-    print("Going to GenAI")
+    logging.info("Going to GenAI")
     jobs_json = convert_via_genai(job_raw_contents)
 
     # Turn the JSON into objects
@@ -544,17 +676,15 @@ def main():
     #print(f"Jobs found: {len(jobs)} writing TSV file")
     create_tsv_file(jobs)
     
-    print("Uploading to DB")
+    logging.info("Uploading to DB")
     upload_to_db(config["Azure"]["AZURE_SQL_CONNECTIONSTRING"].replace("\"",""), jobs)
-    print("Done")
+    logging.info("Done")
     return jobs_json
 
 
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.ERROR)
-    logging.debug("Starting LinkedIn Job Scraper")
-    # dump_env()
+  
     joblist = main()
 
