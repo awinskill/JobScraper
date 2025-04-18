@@ -1,5 +1,7 @@
 config.ini
 jobs.tsv
+jobs2.tsv
 ~$ProcessedResults.xlsx
 UserQuery.sql
 Resume/*
+*.pyc

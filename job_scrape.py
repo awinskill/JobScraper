@@ -30,16 +30,7 @@ from bs4 import BeautifulSoup
 from openai import OpenAIError
 
 
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
 
-
-class Base(DeclarativeBase):
-    pass
 
 # Global configuration
 config = configparser.RawConfigParser()
@@ -156,7 +147,12 @@ def convert_to_int(value):
 
 
 
-
+@backoff.on_exception(
+    backoff.expo,  # Exponential backoff
+    pyodbc.Error,  # Retry on pyodbc errors
+    max_tries=5,   # Maximum number of retries
+    jitter=None    # Optional: Add randomness to backoff intervals
+)
 def get_conn(connection_string):
     try:
         connection = pyodbc.connect(connection_string)
