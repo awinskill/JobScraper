@@ -7,7 +7,7 @@ class JobScraperAgent:
         self.memory = {}         # Track what we've already scraped
         self.plan = []            # List of actions to take
         self.browser = None
-    
+        self.goal_reached = False
 
     def perceive(self):
         # Fetch new job pages
@@ -24,6 +24,10 @@ class JobScraperAgent:
     def learn(self):
         # Adapt to failures or changes in page structures
         pass
+
+    def goal_reached(self):
+        # Check if the goal is reached (e.g., all jobs scraped)
+        return self.goal_reached
 
     def run(self):
         while not self.goal_reached():
