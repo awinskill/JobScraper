@@ -6,3 +6,4 @@ UserQuery.sql
 Resume/*
 *.pyc
 __pycache__/
+*.xlsx
