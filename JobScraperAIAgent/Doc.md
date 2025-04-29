@@ -8,8 +8,7 @@ flowchart TD
     D --> E(Observe Outcome)
     E --> F(Critique & Learn)
     F --> B
-
-```markdown
+```
 ## ✅ Perceive
 - Open the job board URLs.
 - Detect links (even hidden or behind JS — Selenium helps here).
