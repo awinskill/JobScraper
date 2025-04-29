@@ -5,3 +5,4 @@ jobs2.tsv
 UserQuery.sql
 Resume/*
 *.pyc
+__pycache__/

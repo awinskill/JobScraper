@@ -11,7 +11,10 @@ import backoff
 from openai import OpenAIError
 import re
 
+import trafilatura
 
+
+DEV_MODE = True
 
 
 class OpenAISummarizer(GenAISummarizer):
@@ -25,6 +28,7 @@ class OpenAISummarizer(GenAISummarizer):
         """
         self.__api_key = config["OpenAI"]["OPENAI_API_KEY"]
         self.__model = config["OpenAI"]["MODEL"]
+        self.retry_on_no_salary = config["OpenAI"].getboolean("RETRY_ON_NO_SALARY", fallback=False)
 
         self._load_prompt(prompt_filename)
 
@@ -33,7 +37,16 @@ class OpenAISummarizer(GenAISummarizer):
         logging.debug(f"Prompt loaded successfully from {prompt_filename}")
        
         # Set up OpenAI API client here if needed
-
+ 
+    def get_prompt(self):
+        return self.__prompt
+    
+    def get_api_key(self):
+        return self.__api_key
+    
+    def get_model(self):
+        return self.__model
+    
 # read the prompt from the prompt file
     def _load_prompt(self, filename):
         """Load OpenAI Prompt"""
@@ -43,6 +56,8 @@ class OpenAISummarizer(GenAISummarizer):
         with open(filename, "r", encoding="utf-8") as file:
             self.__prompt = file.read()
 
+        file.close()
+        logging.debug(f"Prompt loaded successfully from {filename}")
     
 
 
@@ -111,8 +126,8 @@ class OpenAISummarizer(GenAISummarizer):
             date=parsed_summary.get("date", "Unknown Date"),
             url=parsed_summary.get("url", "Unknown URL"),
             salary=parsed_summary.get("salary", "Unknown Salary"),
-            salary_lower=currency_to_int( parsed_summary.get("salary_lower", None)),
-            salary_upper=currency_to_int( parsed_summary.get("salary_upper", None)),
+            salary_lower=_currency_to_int( parsed_summary.get("salary_lower", None)),
+            salary_upper=_currency_to_int( parsed_summary.get("salary_upper", None)),
             description=parsed_summary.get("description", ""),
             summary=parsed_summary.get("summary", ""),
             fit=parsed_summary.get("fit", None),
@@ -130,7 +145,7 @@ class OpenAISummarizer(GenAISummarizer):
     def _query_openai(self, raw_description ):
         try:
 
-            logging.debug(f"Input string: {self.__prompt}")
+            logging.debug(f"Input string: {super().get_prompt()}")
 
             raw_input = self.__prompt + raw_description
 
@@ -161,7 +176,7 @@ class OpenAISummarizer(GenAISummarizer):
 
 
 
-def currency_to_int(currency: str) -> int:
+def _currency_to_int(currency: str) -> int:
     """
     Converts a currency string to an integer.
     
@@ -183,3 +198,184 @@ def currency_to_int(currency: str) -> int:
 if __name__ == "__main__":
     
     print("No test code provided for OpenAI Summarizer.")
+
+
+
+
+
+class OpenAIStructuredSummarizer(OpenAISummarizer):
+
+    def __init__(self, config, prompt_filename="prompt.txt"):
+        OpenAISummarizer.__init__(self, config, prompt_filename)
+
+        self.job_schema =  { 
+            "format": {
+                "name": "Job_Summarizer",
+                "type": "json_schema",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                            "id": { "type": "integer" },
+                            "title": { "type": "string" },
+                            "company": { "type": "string" },
+                            "location": { "type": "string" },
+                            "date": { "type": "string" },
+                            "url": { "type": "string" },
+                            "salary": { "type": "string" },
+                            "salary_lower": { "type": "integer" },
+                            "salary_upper": { "type": "integer" },
+                            "description": { "type": "string" },
+                            "summary": { "type": "string" },
+                            "fit": { "type": "integer" }
+                        },
+                
+                    "required": [
+                        "id",
+                        "title",
+                        "company",
+                        "location",
+                        "date",
+                        "url",
+                        "salary",
+                        "salary_lower",
+                        "salary_upper",
+                        "description",
+                        "summary",
+                        "fit"
+                    ],
+
+                    "additionalProperties": False
+                },
+            }
+        }
+
+
+        
+
+    def summarize(self, job: Job):
+
+        # clean up the description using trafilatura
+        # and then pass it to the OpenAI API
+        # to get the summary. Reduce the number of tokens
+        # by removing the HTML tags and other junk.
+        logging.info("Cleaning up the description using trafilatura...")
+        logging.info(f"Raw description size: {len(job.raw_description)}")
+        
+
+        # Use trafilatura to clean up the description
+        clean_up_description = trafilatura.extract(job.raw_description)
+        if clean_up_description is None:
+            logging.error("Error cleaning up the description using trafilatura.")
+            return None
+        
+        logging.info(f"Cleaned up description size: {len(clean_up_description)}")
+        
+        parsed_summary = self._openai_structured_query(clean_up_description)
+
+        if parsed_summary is not None:
+            # Create a Job object from the parsed JSON
+            # OpenAI wont return the raw_description, so we need to add it manually
+            # to the Job object. Don't want to incur the cost of those tokens!
+
+            parsed_id = parsed_summary.get("id","Unkown ID")
+            job_id = job.id if job.id is not None else parsed_id
+
+            salary_upper = parsed_summary.get("salary_upper", None)
+
+            if self.retry_on_no_salary:
+
+                if salary_upper is None or salary_upper == 0:
+                    # need to requery OPENAI with the   raw_description - so it has all the information 
+                    logging.info("Requerying OpenAI with the raw description... EXPENSIVE!")
+                    parsed_summary = self._openai_structured_query(job.raw_description)
+                    if parsed_summary is None:
+                        logging.error("Error requerying OpenAI with the raw description.")
+                        return None
+
+            return Job(
+                id=job_id,
+                source=job.source,
+                title=parsed_summary.get("title", "Unknown Title"),
+                company=parsed_summary.get("company", "Unknown Company"),
+                location=parsed_summary.get("location", "Unknown Location"),
+                date=parsed_summary.get("date", "Unknown Date"),
+                url=job.url,
+                salary=parsed_summary.get("salary", "Unknown Salary"),
+                salary_lower=parsed_summary.get("salary_lower", None),
+                salary_upper=parsed_summary.get("salary_upper", None),
+                description=parsed_summary.get("description", ""),
+                summary=parsed_summary.get("summary", ""),
+                fit=parsed_summary.get("fit", None),
+                raw_description=job.raw_description)
+
+
+#    def summarize(self, source, url, raw_description):
+#
+#        parsed_summary = self._openai_structured_query(url=url, raw_description=raw_description)
+#
+#        if parsed_summary is not None:
+            # Create a Job object from the parsed JSON
+            # OpenAI wont return the raw_description, so we need to add it manually
+            # to the Job object. Don't want to incur the cost of those tokens!
+#            return Job(
+#                id=parsed_summary.get("id","Unkown ID"),
+#                source=source,
+#                title=parsed_summary.get("title", "Unknown Title"),
+#                company=parsed_summary.get("company", "Unknown Company"),
+#                location=parsed_summary.get("location", "Unknown Location"),
+#                date=parsed_summary.get("date", "Unknown Date"),
+#                url=parsed_summary.get("url", "Unknown URL"),
+#                salary=parsed_summary.get("salary", "Unknown Salary"),
+#                salary_lower=parsed_summary.get("salary_lower", None),
+#                salary_upper=parsed_summary.get("salary_upper", None),
+#                description=parsed_summary.get("description", ""),
+#                summary=parsed_summary.get("summary", ""),
+#                fit=parsed_summary.get("fit", None),
+#                raw_description=raw_description)
+
+#        return None    
+
+
+    @backoff.on_exception(backoff.expo, (openai.OpenAIError, openai.APIError, openai.RateLimitError, openai.Timeout, BaseException), max_time=600, max_tries=60, jitter=backoff.full_jitter)
+    def _openai_structured_query(self, raw_description):
+        try:
+
+            
+
+            logging.debug(f"Input string: {super().get_prompt()}")
+
+            raw_input=""
+
+ #           if url is None:
+ #               raw_input = super().get_prompt() + str(raw_description)
+ #           else:
+ #               print("Using URL based prompt to reduce tokens, let the LLM go out on the web")
+ #               raw_input = super().get_prompt() + str(url)
+
+            raw_input = super().get_prompt() + str(raw_description)
+ 
+            openai.api_key = super().get_api_key()
+
+            prompt =  {"role": "user", "content": raw_input}
+
+            response = openai.responses.create(
+                model=super().get_model(),
+                input=[
+                    {"role": "system", "content": "You are a computer programmer & you will follow the instructions carefully."},
+                    prompt                   
+                    ],
+                text=self.job_schema
+                )
+            
+        except openai.OpenAIError as e:
+            logging.error("Error querying OpenAI: %s",e)
+            # logging.error(f"Model: {model} Temperature: {temp} Max Output Tokens: {max_tokens} Prompt: {prompt}")
+            return None
+
+        json_response = json.loads(response.output_text)
+        return json_response       
+    
+
+
+
