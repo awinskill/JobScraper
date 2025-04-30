@@ -9,6 +9,10 @@ flowchart TD
     E --> F(Critique & Learn)
     F --> B
 ```
+## ✅ Environment State
+- Load state from persistent store
+- Make any metrics available to the agent
+  
 ## ✅ Perceive
 - Open the job board URLs.
 - Detect links (even hidden or behind JS — Selenium helps here).
@@ -39,3 +43,12 @@ flowchart TD
 - Update memory:
 * Add scraped job URL IDs to prevent duplication.
 * Optionally, retrain rules based on what works better.
+
+| Feature | Just a Program | AI Agent |
+|:---|:---|:---|
+| **Goal-driven** | Executes fixed instructions | Has *own goals* and *chooses actions* to achieve them |
+| **Adaptive behavior** | Follows pre-coded logic | Reacts and adapts based on new observations |
+| **Planning ability** | Linear, no re-evaluation | Plans steps, can replan if needed |
+| **Learning ability** | Only changes if reprogrammed | Modifies behavior based on past experience |
+| **Autonomy** | Passive | Active decision-making without direct commands |
+| **Reasoning or problem-solving** | Only what’s hardcoded | Dynamically reasons (even if shallow) about what to do next |
