@@ -1,0 +1,20 @@
+{
+  "search": {
+    "successes": 2,
+    "failures": 0,
+    "quality_scores": [
+      0.8,
+      0.8
+    ],
+    "last_used": "2025-04-30T17:42:27.873708+00:00"
+  },
+  "summarize": {
+    "successes": 2,
+    "failures": 0,
+    "quality_scores": [
+      0.29,
+      0.23
+    ],
+    "last_used": "2025-04-30T17:42:27.874242+00:00"
+  }
+}

@@ -1,0 +1,207 @@
+# agentic_ai_framework/
+# ├── main.py
+# ├── registry.py
+# ├── planner.py
+# ├── agent.py
+# ├── tools/
+# │   ├── __init__.py
+# │   ├── search.py
+# │   ├── summarize.py
+# ├── config/
+# │   └── tools.json
+# └── data/
+#     └── tool_stats.json
+
+# main.py
+from agent import Agent
+
+goal = "Find recent articles about AI agents and summarize them"
+agent = Agent(goal)
+agent.run()
+
+# registry.py
+from collections import defaultdict
+import json, os
+from datetime import datetime
+
+class ToolRegistry:
+    def __init__(self, stats_file="data/tool_stats.json"):
+        self.tools = {}
+        self.tool_stats = defaultdict(lambda: {
+            "successes": 0, "failures": 0, "quality_scores": [], "last_used": None
+        })
+        self.stats_file = stats_file
+        self._load_stats()
+
+    def register(self, tool):
+        self.tools[tool.name] = tool
+
+    def get_tool(self, name):
+        return self.tools.get(name)
+
+    def run_tool(self, name, context):
+        tool = self.get_tool(name)
+        if not tool:
+            raise ValueError(f"Tool {name} not found")
+        try:
+            result = tool.run(context)
+            feedback = tool.on_success(result)
+            self.record_success(name, feedback)
+            return result
+        except Exception as e:
+            feedback = tool.on_failure(e)
+            self.record_failure(name, feedback)
+            raise
+
+    def record_success(self, name, feedback):
+        s = self.tool_stats[name]
+        s["successes"] += 1
+        s["last_used"] = datetime.utcnow().isoformat()
+        if "quality_score" in feedback:
+            s["quality_scores"].append(feedback["quality_score"])
+        self._save_stats()
+
+    def record_failure(self, name, feedback):
+        s = self.tool_stats[name]
+        s["failures"] += 1
+        s["last_used"] = datetime.utcnow().isoformat()
+        self._save_stats()
+
+    def _save_stats(self):
+        os.makedirs(os.path.dirname(self.stats_file), exist_ok=True)
+        with open(self.stats_file, "w") as f:
+            json.dump(self.tool_stats, f, indent=2)
+
+    def _load_stats(self):
+        if os.path.exists(self.stats_file):
+            with open(self.stats_file, "r") as f:
+                raw = json.load(f)
+                for name, stats in raw.items():
+                    self.tool_stats[name] = stats
+
+    def describe_all_for_planner(self):
+        tools = []
+        for name, tool in self.tools.items():
+            s = self.tool_stats[name]
+            total = s["successes"] + s["failures"]
+            avg = sum(s["quality_scores"]) / len(s["quality_scores"]) if s["quality_scores"] else 0.0
+            rate = s["successes"] / total if total > 0 else 0.0
+            tools.append({
+                "name": name,
+                "description": tool.description,
+                "inputs": tool.inputs,
+                "returns": tool.returns,
+                "score": round(avg, 2),
+                "success_rate": round(rate, 2),
+                "rank_hint": "high" if avg >= 0.7 else "medium" if avg >= 0.4 else "low"
+            })
+        return tools
+
+# planner.py
+import json, openai
+
+def build_ranked_planner_prompt(goal, tool_descriptions):
+    return f"""
+You are a planning assistant.
+Your goal: \"{goal}\"
+
+You have access to the following tools:
+{json.dumps(tool_descriptions, indent=2)}
+
+Create a JSON plan where each step contains:
+- tool: tool name
+- input: dict of parameters (use {{prev_step.output_key}} if dependent)
+- output_key: variable name to store result
+"""
+
+def call_llm_for_plan(prompt):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return json.loads(response['choices'][0]['message']['content'])
+
+# agent.py
+from registry import ToolRegistry
+from planner import build_ranked_planner_prompt, call_llm_for_plan
+import tools
+
+class Agent:
+    def __init__(self, goal):
+        self.goal = goal
+        self.registry = ToolRegistry()
+        self._register_tools()
+        self.plan = []
+        self.context = {}
+
+    def _register_tools(self):
+        self.registry.register(tools.search.Search())
+        self.registry.register(tools.summarize.Summarize())
+
+    def run(self):
+        prompt = build_ranked_planner_prompt(self.goal, self.registry.describe_all_for_planner())
+        self.plan = call_llm_for_plan(prompt)
+        for step in self.plan:
+            inputs = self._resolve_inputs(step['input'])
+            result = self.registry.run_tool(step['tool'], inputs)
+            self.context[step['output_key']] = result
+
+    def _resolve_inputs(self, input_map):
+        resolved = {}
+        for k, v in input_map.items():
+            if isinstance(v, str) and v.startswith("{{"):
+                expr = v.strip("{} ")
+                try:
+                    resolved[k] = eval(expr, {}, self.context)
+                except Exception as e:
+                    raise ValueError(f"Failed to resolve input '{{v}}': {e}")
+            else:
+                resolved[k] = v
+        return resolved
+
+# tools/search.py
+from tools.base import Tool
+
+class Search(Tool):
+    name = "search"
+    description = "Searches for relevant articles based on a keyword."
+    inputs = ["query"]
+    returns = {"results": "list of URLs"}
+
+    def run(self, context):
+        return {"results": ["https://example.com/article1", "https://example.com/article2"]}
+
+    def on_success(self, result):
+        return {"quality_score": 0.8 if result["results"] else 0.0}
+
+# tools/summarize.py
+from tools.base import Tool
+
+class Summarize(Tool):
+    name = "summarize"
+    description = "Summarizes a block of text into bullet points."
+    inputs = ["text"]
+    returns = {"summary": "string"}
+
+    def run(self, context):
+        text = context.get("text", "")
+        return {"summary": "• " + text[:60] + "..."}
+
+    def on_success(self, result):
+        return {"quality_score": len(result.get("summary", "")) / 100}
+
+# tools/base.py
+class Tool:
+    name = ""
+    description = ""
+    inputs = []
+    returns = {}
+
+    def run(self, context):
+        raise NotImplementedError
+
+    def on_success(self, result):
+        return {}
+
+    def on_failure(self, error):
+        return {"penalty": 0.1, "error": str(error)}

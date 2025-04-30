@@ -1,0 +1,30 @@
+{
+  "search": {
+    "successes": 3,
+    "failures": 0,
+    "quality_scores": [
+      0.8
+    ],
+    "last_used": "2025-04-30T18:37:21.597064+00:00"
+  },
+  "summarize": {
+    "successes": 3,
+    "failures": 0,
+    "quality_scores": [
+      0.29
+    ],
+    "last_used": "2025-04-30T18:37:21.597639+00:00"
+  },
+  "extract_jobs": {
+    "successes": 0,
+    "failures": 0,
+    "quality_scores": [],
+    "last_used": null
+  },
+  "summarize_jobs": {
+    "successes": 0,
+    "failures": 0,
+    "quality_scores": [],
+    "last_used": null
+  }
+}

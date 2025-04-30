@@ -1,0 +1,31 @@
+[
+  {
+    "name": "search",
+    "class": "Search",
+    "module": "tools.search",
+    "description": "Searches for relevant articles based on a keyword.",
+    "enabled": true
+  },
+  {
+    "name": "summarize",
+    "class": "Summarize",
+    "module": "tools.summarize",
+    "description": "Summarizes a block of text into bullet points.",
+    "enabled": true
+  },
+  {
+    "name": "extract_jobs",
+    "class": "ExtractJobs",
+    "module": "tools.extract_jobs",
+    "description": "Parses a LinkedIn job search HTML page into Job objects.",
+    "enabled": true
+  },
+  {
+    "name": "summarize_jobs",
+    "class": "SummarizeJobs",
+    "module": "tools.summarize_jobs",
+    "description": "Summarizes a list of job listings to highlight best matches.",
+    "enabled": true,
+    "depends_on": ["extract_jobs"]
+  }
+]
