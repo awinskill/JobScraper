@@ -1,5 +1,12 @@
 # Agent Lifecycle
 
+| Step | Meaning |
+|:--|:--|
+| **Perceive** | Sense environment (input) |
+| **Decide** | Think/plan what to do |
+| **Act** | Do it (output) |
+| **Learn** | Update internal model / memory |
+
 ```mermaid
 flowchart TD
     A[Environment State] --> B(Perceive)
